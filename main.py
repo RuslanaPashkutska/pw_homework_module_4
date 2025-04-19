@@ -17,21 +17,21 @@ SOCKET_HOST = "127.0.0.1"
 SOCKET_PORT = 5000
 
 
-class GoItFramwork(BaseHTTPRequestHandler):
+class GoItFramework(BaseHTTPRequestHandler):
 
     def do_GET(self):
         route = urllib.parse.urlparse(self.path)
         match route.path:
             case "/":
-                self.send_html("index.html")
+                self.send_html("templates/index.html")
             case "/message.html":
-                self.send_html("message.html")
+                self.send_html("templates/message.html")
             case _ if route.path.startswith("/static/"):
                 file = BASE_DIR / route.path[1:]
                 if file.exists():
                     self.send_static(file)
                 else:
-                    self.send_html("error.html", 404)
+                    self.send_html("templates/error.html", 404)
 
 
     def do_POST(self):
@@ -52,13 +52,13 @@ class GoItFramwork(BaseHTTPRequestHandler):
             self.send_response(status_code)
             self.send_header("Content-Type", "text/html")
             self.end_headers()
-            with open(filename, "rb") as file:
+            with open(file, "rb") as file:
                 self.wfile.write(file.read())
         else:
             self.send_response(404)
             self.send_header("Content-Type", "text/html")
             self.end_headers()
-            with open(BASE_DIR / "error.html", "rb") as error_file:
+            with open(BASE_DIR / "templates/error.html", "rb") as error_file:
                 self.wfile.write(error_file.read())
 
 
@@ -78,12 +78,25 @@ class GoItFramwork(BaseHTTPRequestHandler):
 def save_data_from_form(data):
     parse_data = urllib.parse.unquote_plus(data.decode())
     try:
+        decoded_data = data.decode()
+        logging.debug(f"Decoded form data: {decoded_data}")
+
+        if not parse_data:
+            logging.error("Empty data received")
+            return
+
         parse_dict = {key: value for key, value in [el.split("=") for el in parse_data.split("&")]}
+        username = parse_dict.get("username",  "").strip()
+        message = parse_dict.get("message", "").strip()
+        if not username or not message:
+            logging.warning("Empty username or message. Skipping save.")
+            return
+
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
         new_message = {
             timestamp: {
-                "username": parse_dict.get("username", ""),
-                "message": parse_dict.get("message", "")
+                "username": username,
+                "message": message
             }
         }
         data_path = BASE_DIR / "storage/data.json"
@@ -96,9 +109,13 @@ def save_data_from_form(data):
 
         all_data.update(new_message)
 
-        with open("storage/data.json", "w", encoding="utf-8") as file:
+        with open(data_path, "w", encoding="utf-8") as file:
             json.dump(all_data, file, ensure_ascii=False, indent=4)
 
+        logging.debug(f"Saved message: {new_message}")
+
+    except Exception as err:
+        logging.exception(f"Error in save_data_from_from: {err}")
     except json.JSONDecodeError as err:
         logging.error(f"JSON decode error: {err}")
     except ValueError as err:
@@ -123,7 +140,7 @@ def run_socket_server(host, port):
 
 def run_http_server(host, port):
     address = (host, port)
-    http_server = HTTPServer(address, GoItFramwork)
+    http_server = HTTPServer(address, GoItFramework)
     logging.info("Starting http server")
     try:
         http_server.serve_forever()
